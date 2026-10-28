@@ -19,7 +19,7 @@ export function createHandler({fetchImpl=fetch, generate=generateText, env=proce
           const response=await fetchImpl('https://ai-gateway.vercel.sh/v1/credits',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(12000)});
           const data=await response.json();
           // Read-only diagnostic: never expose tokens, balances, account history or raw errors.
-          return res.status(200).json({configured:true,gatewayStatus:response.status,creditsAvailable:response.ok?Number(data.balance)>0:null});
+          return res.status(200).json({configured:true,gatewayStatus:response.status,creditBalanceKnown:response.ok&&data.balance!=null&&Number.isFinite(Number(data.balance)),creditsAvailable:response.ok&&data.balance!=null&&Number.isFinite(Number(data.balance))?Number(data.balance)>0:null});
         }catch{return res.status(200).json({configured:true,gatewayStatus:'unreachable'});}
       }
       return res.status(200).json({configured:true});
@@ -49,6 +49,13 @@ export function createHandler({fetchImpl=fetch, generate=generateText, env=proce
       if(!connected){try{connected=Boolean(await resolveOidc());}catch{}}
       if(!connected)
         return res.status(503).json({error:'The AI connection is unavailable. Please contact the Sales Hub administrator.'});
+      // Check balance before reading CRM data or starting a paid generation.
+      try{
+        const gatewayToken=env.AI_GATEWAY_API_KEY||env.VERCEL_OIDC_TOKEN||await resolveOidc();
+        const creditResponse=await fetchImpl('https://ai-gateway.vercel.sh/v1/credits',{headers:{Authorization:'Bearer '+gatewayToken},signal:AbortSignal.timeout(12000)});
+        if(creditResponse.ok){const creditData=await creditResponse.json();if(creditData.balance!=null&&Number.isFinite(Number(creditData.balance))&&Number(creditData.balance)<=0)
+          return res.status(402).json({error:'Your Vercel AI Gateway has no available credits. In Vercel, select RSUK scaffolding, open AI Gateway → Credits, and add credits before running an assistant.'});}
+      }catch{/* Let generation return its own classified error if balance lookup is unavailable. */}
       const yesterday=new Date(Date.now()-86400000).toISOString();
       const runs=await read('/rest/v1/activities?select=created_at&actor_id=eq.'+encodeURIComponent(user.id)+'&action=eq.sales_agent_started&created_at=gte.'+encodeURIComponent(yesterday)+'&order=created_at.desc&limit=20');
       if(runs.length>=20 || (runs[0]&&Date.now()-Date.parse(runs[0].created_at)<30000))
