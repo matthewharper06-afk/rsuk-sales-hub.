@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {qualifyResearch,formatResearch} from '../lib/research-quality.mjs';
 const lead={company:'New Contractor Ltd',group:'',companyType:'Contractor',website:'https://contractor.example.org',area:'Birmingham',buyingSignal:'Housing roof programme',signalType:'Live programme',evidenceDate:'2026-10-01',closingDate:'',startDate:'',signalSource:'https://contractor.example.org/news',contactName:'Alex Smith',contactRole:'Supply chain',email:'alex@contractor.example.org',phone:'01922 123456',contactSource:'https://contractor.example.org/contact',nextAction:'Ask about scaffold packages',missing:'Confirm site volume'};
-const sources=[{url:lead.signalSource,snippet:'Housing roof programme in Birmingham.'},{url:lead.contactSource,snippet:'Alex Smith, Supply chain. alex@contractor.example.org. 01922 123456'}];
+const sources=[{url:lead.signalSource,date:'2026-10-01',snippet:'Housing roof programme in Birmingham. Engagement deadline 1 October 2026. Future programme starts 1 April 2027.'},{url:lead.contactSource,snippet:'Alex Smith, Supply chain. alex@contractor.example.org. 01922 123456'}];
 const check=(prospects,overrides={},evidence=sources)=>qualifyResearch({prospects,nextActions:['Call the buyer']},[{toolResults:[{toolName:'search',output:{results:evidence}}]}],{today:'2026-10-28',count:5,...overrides});
 test('literal company-source contact details survive evidence checks',()=>{
  const r=check([lead]);assert.equal(r.leads.length,1);assert.equal(r.leads[0].email,lead.email);assert.equal(r.leads[0].phone,lead.phone);assert.equal(r.leads[0].priority,'Contact now');
@@ -46,4 +46,13 @@ test('procurement routes point to appointed contractors and returned counts rema
 test('published recruitment/privacy contacts are withheld from sales outreach',()=>{
  const r=check([{...lead,email:'careers@contractor.example.org',contactRole:'Recruitment'}],{},[sources[0],{...sources[1],snippet:'Recruitment careers@contractor.example.org. 01922 123456'}]);
  assert.equal(r.leads[0].email,'');assert.equal(r.leads[0].phone,'');
+});
+
+test('trade-source buying signals need a primary announcement',()=>{
+ const secondary={url:'https://www.locarla.com/insight/award',snippet:'Contractor appointed to housing works'};
+ const r=check([{...lead,signalSource:secondary.url}],{},[...sources,secondary]);assert.equal(r.leads.length,0);assert.equal(r.removed,1);
+});
+test('crawl timestamps and a general framework portfolio cannot create contact-now leads',()=>{
+ const r=check([{...lead,buyingSignal:'Lists multiple framework appointments in the West Midlands',evidenceDate:'2026-10-26'}],{},[{...sources[0],date:undefined,lastUpdated:'2026-10-26',snippet:'Framework portfolio across Midlands'},sources[1]]);
+ assert.equal(r.leads[0].evidenceDate,'');assert.equal(r.leads[0].priority,'Research further');
 });
