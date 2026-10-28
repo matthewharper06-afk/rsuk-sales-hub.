@@ -12,7 +12,7 @@ The agreed goal is £250,000 sustained monthly turnover excluding VAT from Janua
 
 This extends the existing static/Supabase application with a Vercel Node function at `/api/sales-agent`; it does not replace the application or its authentication. Install with `npm ci`. The AI SDK is pinned to 7.0.155. Vercel detects the function alongside the static frontend.
 
-AI Gateway uses the deployment's automatic `VERCEL_OIDC_TOKEN`, or server-only `AI_GATEWAY_API_KEY`. Gateway access and sufficient credit must be available in the hosting team. Never place AI credentials in `config.js`. Default model `openai/gpt-6.1-sol` was checked against the Gateway model catalogue during implementation; optional server environment variable `RSUK_AGENT_MODEL` can override it.
+AI Gateway uses the deployment's automatic `VERCEL_OIDC_TOKEN`, or server-only `AI_GATEWAY_API_KEY`. Gateway access and sufficient credit must be available in the hosting team. Never place AI credentials in `config.js`. Default model `openai/gpt-5-mini` was checked against the Gateway model catalogue during implementation; optional server environment variable `RSUK_AGENT_MODEL` can override it.
 
 Public Supabase settings in the API match `config.js`. If the Supabase project changes, update both. Server requests use the staff user's JWT and publishable key, never a service role. The server verifies Auth and active team membership before accessing CRM data or invoking AI. No database migration is required. Approved team members share report history under existing activity RLS.
 
@@ -27,3 +27,5 @@ The first release reads up to 500 companies, contacts and recent activities, dis
 Run `npm test`. Tests exercise signed-out/inactive access, malformed requests, missing AI configuration, soft rate limits, opted-out/disqualified contacts, provider error redaction, server-side CRM context, required research tooling and report-only writes. Provider calls are mocked in these tests: they do not verify live credentials, search quality or actual model output.
 
 In a Vercel preview, verify an invited user can run each assistant and read its saved report, a suspended/signed-out user cannot run it, opt-outs cannot be selected, and a failed Gateway request has a useful error. Check existing contacts, pipeline, follow-up plans, Outlook drafts and CSV import still work. Real AI output needs review for source quality and commercial accuracy.
+
+Live model-access check: this team accepted openai/gpt-5-mini while newer model requests returned HTTP 403 with a free-tier restriction despite a positive balance. The default uses the tested accessible model.
