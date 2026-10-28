@@ -4,7 +4,7 @@ import {createHandler} from '../api/sales-agent.mjs';
 import {buildContext,brief,eligible} from '../lib/sales-agents.mjs';
 
 const researchProspect={company:'New Contractor',group:'',companyType:'Contractor',website:'https://newcontractor.example.org',area:'Birmingham',buyingSignal:'Awarded a housing roofing programme',signalType:'Live programme',evidenceDate:'2026-10-01',closingDate:'',startDate:'',signalSource:'https://newcontractor.example.org/news/housing',contactName:'',contactRole:'General enquiries',email:'info@newcontractor.example.org',phone:'',contactSource:'https://newcontractor.example.org/contact',nextAction:'Ask about scaffold packages',missing:'Confirm buyer and volume'};
-const searchEvidence=[{url:researchProspect.signalSource,title:'New housing programme',snippet:'New Contractor delivers housing roofing works in Birmingham.'},{url:researchProspect.contactSource,title:'Contact New Contractor',snippet:'Contact info@newcontractor.example.org for business enquiries.'}];
+const searchEvidence=[{url:researchProspect.signalSource,date:'2026-10-01',title:'New housing programme',snippet:'New Contractor delivers housing roofing works in Birmingham.'},{url:researchProspect.contactSource,title:'Contact New Contractor',snippet:'Contact info@newcontractor.example.org for business enquiries.'}];
 const companies=[{id:'co1',name:'Example contractor',stage:'Contacted',value:900}];
 const contacts=[{id:'p1',company_id:'co1',name:'Example person',email:'example@example.org',opted_out:false}];
 function setup({active=true,expired=false,runs=[],generateError=false,search=true,creditBalance=null,savedReports=[],contactRows=contacts,saveFails=false,resolveOidc=async()=>undefined,env={VERCEL_OIDC_TOKEN:'test-token'}}={}) {
