@@ -5,7 +5,7 @@ import {buildContext,brief,eligible} from '../lib/sales-agents.mjs';
 
 const companies=[{id:'co1',name:'Example contractor',stage:'Contacted',value:900}];
 const contacts=[{id:'p1',company_id:'co1',name:'Example person',email:'example@example.org',opted_out:false}];
-function setup({active=true,expired=false,runs=[],generateError=false,search=true,env={VERCEL_OIDC_TOKEN:'test-token'}}={}) {
+function setup({active=true,expired=false,runs=[],generateError=false,search=true,resolveOidc=async()=>undefined,env={VERCEL_OIDC_TOKEN:'test-token'}}={}) {
   let generations=0,sentOptions,writes=[];
   const fetchImpl=async(url,options)=>{
     if(options.method==='POST'){writes.push(JSON.parse(options.body));return {ok:true};}
@@ -17,7 +17,7 @@ function setup({active=true,expired=false,runs=[],generateError=false,search=tru
     else if(url.includes('/contacts'))data=contacts;
     return {ok:true,json:async()=>data};
   };
-  const handler=createHandler({fetchImpl,env,generate:async options=>{generations++;sentOptions=options;if(generateError)throw Error('secret-token-and-private-context');return {text:'Example report',steps:search?[{toolResults:[{toolName:'search',output:{results:[]}}]}]:[]};}});
+  const handler=createHandler({fetchImpl,env,resolveOidc,generate:async options=>{generations++;sentOptions=options;if(generateError)throw Error('secret-token-and-private-context');return {text:'Example report',steps:search?[{toolResults:[{toolName:'search',output:{results:[]}}]}]:[]};}});
   const invoke=async(body={kind:'pipeline',notes:''},authorization='Bearer example')=>{let status,result;const res={setHeader(){},status(s){status=s;return this;},json(b){result=b;return b;}};await handler({method:'POST',headers:{authorization},body},res);return {status,result};};
   return {invoke,writes,get generations(){return generations;},get options(){return sentOptions;}};
 }
@@ -60,4 +60,9 @@ test('brief retains agreed gap and one-off values are never labelled recurring',
   assert.equal(brief.targetMonthly-brief.baselineMonthly,35000);
   const context=buildContext('pipeline',{notes:''},{companies,contacts,activities:[],truncated:true},'2026-10-28');
   assert.equal(context.truncated,true);assert.equal(context.companies[0].value,900);assert.equal(context.recurringRevenue,undefined);
+});
+
+test('deployed request-context OIDC works without an environment token',async()=>{
+  const a=setup({env:{},resolveOidc:async()=> 'request-context-test-token'});
+  assert.equal((await a.invoke()).status,200);assert.equal(a.generations,1);
 });
