@@ -11,9 +11,18 @@ export function createHandler({fetchImpl=fetch, generate=generateText, env=proce
   return async function handler(req,res) {
     res.setHeader('Cache-Control','no-store');
     if(req.method==='GET'){
-      let configured=Boolean(env.AI_GATEWAY_API_KEY||env.VERCEL_OIDC_TOKEN);
-      if(!configured){try{configured=Boolean(await resolveOidc());}catch{}}
-      return res.status(configured?200:503).json({configured});
+      let token=env.AI_GATEWAY_API_KEY||env.VERCEL_OIDC_TOKEN;
+      if(!token){try{token=await resolveOidc();}catch{}}
+      if(!token)return res.status(503).json({configured:false});
+      if(req.query?.check==='gateway'){
+        try{
+          const response=await fetchImpl('https://ai-gateway.vercel.sh/v1/credits',{headers:{Authorization:'Bearer '+token},signal:AbortSignal.timeout(12000)});
+          const data=await response.json();
+          // Read-only diagnostic: never expose tokens, balances, account history or raw errors.
+          return res.status(200).json({configured:true,gatewayStatus:response.status,creditsAvailable:response.ok?Number(data.balance)>0:null});
+        }catch{return res.status(200).json({configured:true,gatewayStatus:'unreachable'});}
+      }
+      return res.status(200).json({configured:true});
     }
     if(req.method!=='POST') {res.setHeader('Allow','GET, POST');return res.status(405).json({error:'Use GET or POST.'});}
     const token = /^Bearer ([^\s]+)$/.exec(req.headers.authorization||'')?.[1];
@@ -70,6 +79,10 @@ export function createHandler({fetchImpl=fetch, generate=generateText, env=proce
       const save=await fetchImpl(supabaseUrl+'/rest/v1/activities',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({actor_id:user.id,action:'sales_agent_run',details:JSON.stringify({kind:input.kind,text,generated_at:new Date().toISOString()})}),signal:AbortSignal.timeout(12000)});
       return res.status(200).json({text,saved:save.ok,truncated:snapshot.truncated});
     }catch(error){
+      // Log only safe categories/statuses, never raw errors, request bodies or tokens.
+      const code=Number(error.statusCode||error.cause?.statusCode)||null;
+      const category=String(error.name||'UnknownError').replace(/[^a-zA-Z_]/g,'').slice(0,60);
+      console.error('sales_agent_failed',JSON.stringify({category,status:code,creditIssue:/credit|balance|billing|payment/i.test(String(error.message||'')),modelIssue:/model.*(found|support|available)/i.test(String(error.message||''))}));
       // Never return provider errors: they can contain request context or credentials.
       return res.status(error.status||502).json({error:error.status?error.message:'The assistant could not complete this run. Check the AI Gateway connection/credits, or retry shortly.'});
     }
