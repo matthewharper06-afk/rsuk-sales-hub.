@@ -16,7 +16,7 @@ AI Gateway uses the deployment's automatic `VERCEL_OIDC_TOKEN`, or server-only `
 
 Public Supabase settings in the API match `config.js`. If the Supabase project changes, update both. Server requests use the staff user's JWT and publishable key, never a service role. The server verifies Auth and active team membership before accessing CRM data or invoking AI. No database migration is required. Approved team members share report history under existing activity RLS.
 
-Only explicitly requested runs execute. No background schedules, automatic mail, calls or lead imports are configured. Model/search usage can incur AI Gateway charges. Each run has bounded tokens, search steps and timeout. Activity-backed limits allow 20 starts per user per rolling day, with 30 seconds between runs. This is a soft limit, not a transactional spend cap; use Gateway budgets for a hard spending policy.
+Only explicitly requested runs execute. No background schedules, automatic mail, calls or lead imports are configured. Model/search usage can incur AI Gateway charges. Each run has bounded tokens, search steps and timeout. Activity-backed limits allow 20 starts per user per rolling day, with 30 seconds between new reports and five seconds between replies. This is a soft limit, not a transactional spend cap; use Gateway budgets for a hard spending policy.
 
 CRM data, contact notes and optional context are sent to the configured model. Public research uses Gateway web search. Review what you enter in context. Reports are stored as `sales_agent_run` activities and rendered as plain text. Starts are logged separately to count failed attempts too. A report-saving failure is shown clearly; copy the report before leaving.
 
@@ -31,3 +31,13 @@ In a Vercel preview, verify an invited user can run each assistant and read its 
 Live model-access check: this team accepted openai/gpt-5-mini while newer model requests returned HTTP 403 with a free-tier restriction despite a positive balance. The default uses the tested accessible model.
 
 Reliability update: research uses one search round followed by synthesis, low reasoning effort, up to two transient-error retries, a 150-second generation deadline and 180-second function duration. The UI waits up to 185 seconds. A live replay of the five-account social-housing workflow with a synthetic 500-company CRM snapshot completed successfully in 20 seconds with finishReason=stop. Auth/database writes in that replay were simulated; signed-in production CRM integration remains a separate check.
+
+## Replying to an agent
+
+Open a report under Saved conversations, type in Reply to this agent and select Send reply. Older reports can be continued too. Replies use the stored report history plus a fresh CRM snapshot; client-supplied conversation history is never trusted. Follow-up conversations re-check the current contact opt-out/Not suitable state when the saved report identifies a contact.
+
+Each saved turn is an append-only sales_agent_run activity containing the conversation ID, parent report ID, messages and original settings. The history lists the latest turn for each conversation. Exports already include activity details, so no database migration is needed. If a report cannot be saved, copy remains available and replies are disabled to prevent context loss.
+
+Conversation questions are limited to 3,000 characters. A thread accepts up to eleven replies and a maximum 100,000 characters of stored history plus the next question; long threads ask the user to start a new report with a summary. Twenty total report/reply starts are allowed per person per rolling 24 hours. Replies may use web search when new information is required, and incur Gateway usage. No automatic emails, lead imports, downloads or schedules are created by chat replies.
+
+DOM checks verified legacy-report opening, plain-text rendering, reply submission, thread restoration after refresh, grouped history and draft preservation after an error. Node tests also cover saved-history ownership, malformed/inaccessible parents, invalid stored roles, opt-outs, save failure and reply cooldown.
