@@ -44,7 +44,7 @@ test('pipeline uses server CRM data, saves reports, and never writes sales recor
 });
 test('research requires search and excludes private contact details from web context',async()=>{
   const a=setup();assert.equal((await a.invoke({kind:'research',notes:'',sector:'Solar',count:5})).status,200);
-  assert.ok(a.options.tools.search);assert.equal(a.options.prepareStep({stepNumber:0}).toolChoice,'required');
+  assert.ok(a.options.tools.search);assert.equal(a.options.prepareStep({stepNumber:0}).toolChoice,'required');assert.equal(a.options.prepareStep({stepNumber:1}).toolChoice,'none');assert.equal(a.options.reasoning,'low');assert.equal(a.options.maxRetries,2);
   assert.doesNotMatch(a.options.prompt,/example@example.org/);
   const b=setup({search:false});assert.equal((await b.invoke({kind:'research',notes:'',sector:'Solar',count:5})).status,502);
 });
@@ -77,4 +77,15 @@ test('model-tier rejection is distinct from an empty credit balance',async()=>{
   const error=Object.assign(new Error('Free tier users do not have access. Upgrade to paid credits.'),{statusCode:403,name:'GatewayInternalServerError'});
   const a=setup({generateError:error,creditBalance:'10'});const r=await a.invoke();
   assert.equal(r.status,403);assert.match(r.result.error,/restricting access/);assert.doesNotMatch(r.result.error,/Upgrade to paid/);
+});
+
+test('transient provider failure is reported without blaming credits',async()=>{
+  const error=Object.assign(new Error('private provider payload'),{statusCode:500,name:'GatewayResponseError'});
+  const a=setup({generateError:error,creditBalance:'10'});const r=await a.invoke();
+  assert.equal(r.status,502);assert.match(r.result.error,/temporary server error/);assert.doesNotMatch(r.result.error,/credits|private provider/);
+});
+test('research timeout gives a narrower-research action',async()=>{
+  const error=Object.assign(new Error('timeout'),{name:'TimeoutError'});
+  const a=setup({generateError:error});const r=await a.invoke();
+  assert.equal(r.status,504);assert.match(r.result.error,/fewer accounts/);
 });
