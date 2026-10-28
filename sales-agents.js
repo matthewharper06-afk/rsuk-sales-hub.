@@ -20,10 +20,10 @@ window.RSUKSalesAgents = (() => {
       event.preventDefault();if(busy)return;
       const kind=$('agentKind').value;
       if(kind==='followup'&&!$('agentContact').value){$('agentStatus').textContent='Choose a contact first.';return;}
-      busy=true;$('agentRun').disabled=true;$('agentStatus').textContent='Working… this can take up to two minutes.';
+      busy=true;$('agentRun').disabled=true;$('agentStatus').textContent='Working… this can take up to three minutes.';
       try{
         const session=await getSession();if(!session?.access_token)throw Error('Please sign in again.');
-        const response=await fetch('/api/sales-agent',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},body:JSON.stringify({kind,sector:$('agentSector').value,count:Number($('agentCount').value),contactId:$('agentContact').value,notes:$('agentNotes').value}),signal:AbortSignal.timeout(125000)});
+        const response=await fetch('/api/sales-agent',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},body:JSON.stringify({kind,sector:$('agentSector').value,count:Number($('agentCount').value),contactId:$('agentContact').value,notes:$('agentNotes').value}),signal:AbortSignal.timeout(185000)});
         const data=await response.json();if(!response.ok)throw Error(data.error||'Could not run the assistant.');
         lastReport=data.text;
         await refresh();
