@@ -18,7 +18,7 @@ function setup({active=true,expired=false,runs=[],generateError=false,search=tru
     else if(url.includes('/contacts'))data=contacts;
     return {ok:true,json:async()=>data};
   };
-  const handler=createHandler({fetchImpl,env,resolveOidc,generate:async options=>{generations++;sentOptions=options;if(generateError)throw Error('secret-token-and-private-context');return {text:'Example report',steps:search?[{toolResults:[{toolName:'search',output:{results:[]}}]}]:[]};}});
+  const handler=createHandler({fetchImpl,env,resolveOidc,generate:async options=>{generations++;sentOptions=options;if(generateError)throw generateError instanceof Error?generateError:Error('secret-token-and-private-context');return {text:'Example report',steps:search?[{toolResults:[{toolName:'search',output:{results:[]}}]}]:[]};}});
   const invoke=async(body={kind:'pipeline',notes:''},authorization='Bearer example')=>{let status,result;const res={setHeader(){},status(s){status=s;return this;},json(b){result=b;return b;}};await handler({method:'POST',headers:{authorization},body},res);return {status,result};};
   return {invoke,writes,get generations(){return generations;},get options(){return sentOptions;}};
 }
@@ -40,7 +40,7 @@ test('rate limits prevent model invocation',async()=>{
 test('pipeline uses server CRM data, saves reports, and never writes sales records',async()=>{
   const a=setup();const r=await a.invoke();assert.equal(r.status,200);assert.equal(r.result.saved,true);
   assert.match(a.options.prompt,/Example contractor/);assert.match(a.options.system,/Only explicit, confirmed recurring/);
-  assert.deepEqual(a.writes.map(w=>w.action),['sales_agent_started','sales_agent_run']);assert.equal(a.options.tools,undefined);
+  assert.deepEqual(a.writes.map(w=>w.action),['sales_agent_started','sales_agent_run']);assert.equal(a.options.tools,undefined);assert.equal(a.options.model,'openai/gpt-5-mini');
 });
 test('research requires search and excludes private contact details from web context',async()=>{
   const a=setup();assert.equal((await a.invoke({kind:'research',notes:'',sector:'Solar',count:5})).status,200);
@@ -71,4 +71,10 @@ test('deployed request-context OIDC works without an environment token',async()=
 test('empty Gateway balance gives an actionable error before generation or CRM writes',async()=>{
   const a=setup({creditBalance:'0'});const r=await a.invoke();
   assert.equal(r.status,402);assert.match(r.result.error,/no available credits/);assert.equal(a.generations,0);assert.equal(a.writes.length,0);
+});
+
+test('model-tier rejection is distinct from an empty credit balance',async()=>{
+  const error=Object.assign(new Error('Free tier users do not have access. Upgrade to paid credits.'),{statusCode:403,name:'GatewayInternalServerError'});
+  const a=setup({generateError:error,creditBalance:'10'});const r=await a.invoke();
+  assert.equal(r.status,403);assert.match(r.result.error,/restricting access/);assert.doesNotMatch(r.result.error,/Upgrade to paid/);
 });
