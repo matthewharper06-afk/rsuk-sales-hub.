@@ -1,3 +1,4 @@
+import { getVercelOidcToken } from '@vercel/oidc';
 import { generateText, gateway, isStepCount } from 'ai';
 import { brief, roles, commonInstructions, buildContext } from '../lib/sales-agents.mjs';
 
@@ -6,10 +7,15 @@ const supabaseUrl = 'https://fcbvdolppevhouwdrjfu.supabase.co';
 const publicKey = 'sb_publishable_tftDnEvxuBcAG1JItM40yw_17WlvFcS';
 export const config = { maxDuration: 120 };
 
-export function createHandler({fetchImpl=fetch, generate=generateText, env=process.env}={}) {
+export function createHandler({fetchImpl=fetch, generate=generateText, env=process.env,resolveOidc=getVercelOidcToken}={}) {
   return async function handler(req,res) {
     res.setHeader('Cache-Control','no-store');
-    if(req.method!=='POST') {res.setHeader('Allow','POST');return res.status(405).json({error:'Use POST.'});}
+    if(req.method==='GET'){
+      let configured=Boolean(env.AI_GATEWAY_API_KEY||env.VERCEL_OIDC_TOKEN);
+      if(!configured){try{configured=Boolean(await resolveOidc());}catch{}}
+      return res.status(configured?200:503).json({configured});
+    }
+    if(req.method!=='POST') {res.setHeader('Allow','GET, POST');return res.status(405).json({error:'Use GET or POST.'});}
     const token = /^Bearer ([^\s]+)$/.exec(req.headers.authorization||'')?.[1];
     if(!token) return res.status(401).json({error:'Sign in to run a sales assistant.'});
     const headers={apikey:publicKey,Authorization:`Bearer ${token}`};
@@ -29,8 +35,11 @@ export function createHandler({fetchImpl=fetch, generate=generateText, env=proce
         return res.status(400).json({error:'Choose an assistant and keep context below 3,000 characters.'});
       if(input.kind==='research'&&(!brief.sectors.includes(input.sector)||!Number.isInteger(input.count)||input.count<1||input.count>10))
         return res.status(400).json({error:'Choose a target sector and between 1 and 10 accounts.'});
-      if(!env.AI_GATEWAY_API_KEY&&!env.VERCEL_OIDC_TOKEN)
-        return res.status(503).json({error:'AI connection is not configured. Enable Vercel OIDC or add AI_GATEWAY_API_KEY on the server.'});
+      // Deployed Vercel Functions receive OIDC via request context, not necessarily env.
+      let connected=Boolean(env.AI_GATEWAY_API_KEY||env.VERCEL_OIDC_TOKEN);
+      if(!connected){try{connected=Boolean(await resolveOidc());}catch{}}
+      if(!connected)
+        return res.status(503).json({error:'The AI connection is unavailable. Please contact the Sales Hub administrator.'});
       const yesterday=new Date(Date.now()-86400000).toISOString();
       const runs=await read('/rest/v1/activities?select=created_at&actor_id=eq.'+encodeURIComponent(user.id)+'&action=eq.sales_agent_started&created_at=gte.'+encodeURIComponent(yesterday)+'&order=created_at.desc&limit=20');
       if(runs.length>=20 || (runs[0]&&Date.now()-Date.parse(runs[0].created_at)<30000))
