@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {createHandler} from '../api/sales-agent.mjs';
 import {buildContext,brief,eligible} from '../lib/sales-agents.mjs';
 
+const researchProspect={company:'New Contractor',group:'',companyType:'Contractor',website:'https://newcontractor.example.org',area:'Birmingham',buyingSignal:'Awarded a housing roofing programme',signalType:'Live programme',evidenceDate:'2026-10-01',closingDate:'',startDate:'',signalSource:'https://newcontractor.example.org/news/housing',contactName:'',contactRole:'General enquiries',email:'info@newcontractor.example.org',phone:'',contactSource:'https://newcontractor.example.org/contact',nextAction:'Ask about scaffold packages',missing:'Confirm buyer and volume'};
+const searchEvidence=[{url:researchProspect.signalSource,title:'New housing programme',snippet:'New Contractor delivers housing roofing works in Birmingham.'},{url:researchProspect.contactSource,title:'Contact New Contractor',snippet:'Contact info@newcontractor.example.org for business enquiries.'}];
 const companies=[{id:'co1',name:'Example contractor',stage:'Contacted',value:900}];
 const contacts=[{id:'p1',company_id:'co1',name:'Example person',email:'example@example.org',opted_out:false}];
 function setup({active=true,expired=false,runs=[],generateError=false,search=true,creditBalance=null,savedReports=[],contactRows=contacts,saveFails=false,resolveOidc=async()=>undefined,env={VERCEL_OIDC_TOKEN:'test-token'}}={}) {
@@ -19,7 +21,7 @@ function setup({active=true,expired=false,runs=[],generateError=false,search=tru
     else if(url.includes('/contacts'))data=contactRows;
     return {ok:true,json:async()=>data};
   };
-  const handler=createHandler({fetchImpl,env,resolveOidc,generate:async options=>{generations++;sentOptions=options;if(generateError)throw generateError instanceof Error?generateError:Error('secret-token-and-private-context');return {text:'Example report',steps:search?[{toolResults:[{toolName:'search',output:{results:[]}}]}]:[]};}});
+  const handler=createHandler({fetchImpl,env,resolveOidc,generate:async options=>{generations++;sentOptions=options;if(generateError)throw generateError instanceof Error?generateError:Error('secret-token-and-private-context');return {text:'Example report',output:{prospects:[researchProspect],nextActions:['Contact the buyer']},steps:search?[{toolResults:[{toolName:'search',output:{results:searchEvidence}}]}]:[]};}});
   const invoke=async(body={kind:'pipeline',notes:''},authorization='Bearer example')=>{let status,result;const res={setHeader(){},status(s){status=s;return this;},json(b){result=b;return b;}};await handler({method:'POST',headers:{authorization},body},res);return {status,result};};
   return {invoke,writes,get generations(){return generations;},get options(){return sentOptions;}};
 }
@@ -139,4 +141,23 @@ test('full conversations ask for a new report instead of silently dropping conte
   const messages=Array.from({length:23},(_,i)=>({role:i%2?'user':'assistant',content:'Earlier turn'}));
   const a=setup({savedReports:[{id,action:'sales_agent_run',details:JSON.stringify({kind:'pipeline',text:'Report',messages})}]});
   const r=await a.invoke({parentId:id,message:'One more question'});assert.equal(r.status,400);assert.match(r.result.error,/conversation is full/);assert.equal(a.generations,0);
+});
+
+test('research uses distinct discovery and verification calls and saves checked contacts',async()=>{
+  const a=setup();const r=await a.invoke({kind:'research',notes:'',sector:'Roofing',count:5,area:'Birmingham',focus:'Contractors delivering work'});
+  assert.equal(r.status,200);assert.equal(a.generations,2);assert.ok(a.options.output);
+  assert.equal(r.result.leads.length,1);assert.equal(r.result.leads[0].email,'info@newcontractor.example.org');
+  assert.match(r.result.text,/1 account returned of 5/);
+  const saved=JSON.parse(a.writes.at(-1).details);assert.equal(saved.settings.area,'Birmingham');assert.equal(saved.leads.length,1);
+});
+test('invalid research area and focus are rejected before model calls',async()=>{
+  const a=setup();assert.equal((await a.invoke({kind:'research',notes:'',sector:'Roofing',count:5,area:'x'.repeat(151)})).status,400);
+  assert.equal((await a.invoke({kind:'research',notes:'',sector:'Roofing',count:5,focus:'unknown'})).status,400);assert.equal(a.generations,0);
+});
+
+test('shortlist contacts and area remain attached to later replies',async()=>{
+ const a=setup();const first=await a.invoke({kind:'research',notes:'',sector:'Roofing',count:5,area:'Coventry',focus:'Contractors delivering work'});
+ const reply=await a.invoke({parentId:first.result.reportId,message:'Draft an introduction to the first company'});
+ assert.equal(reply.status,200);assert.equal(reply.result.leads[0].email,'info@newcontractor.example.org');
+ assert.equal(JSON.parse(a.writes.at(-1).details).settings.area,'Coventry');
 });
