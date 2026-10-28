@@ -5,9 +5,10 @@ import {buildContext,brief,eligible} from '../lib/sales-agents.mjs';
 
 const companies=[{id:'co1',name:'Example contractor',stage:'Contacted',value:900}];
 const contacts=[{id:'p1',company_id:'co1',name:'Example person',email:'example@example.org',opted_out:false}];
-function setup({active=true,expired=false,runs=[],generateError=false,search=true,resolveOidc=async()=>undefined,env={VERCEL_OIDC_TOKEN:'test-token'}}={}) {
+function setup({active=true,expired=false,runs=[],generateError=false,search=true,creditBalance=null,resolveOidc=async()=>undefined,env={VERCEL_OIDC_TOKEN:'test-token'}}={}) {
   let generations=0,sentOptions,writes=[];
   const fetchImpl=async(url,options)=>{
+    if(url.includes('ai-gateway.vercel.sh/v1/credits'))return {ok:true,status:200,json:async()=>({balance:creditBalance})};
     if(options.method==='POST'){writes.push(JSON.parse(options.body));return {ok:true};}
     let data=[];
     if(url.includes('/auth/')){if(expired)return {ok:false,status:401};data={id:'user1'};}
@@ -65,4 +66,9 @@ test('brief retains agreed gap and one-off values are never labelled recurring',
 test('deployed request-context OIDC works without an environment token',async()=>{
   const a=setup({env:{},resolveOidc:async()=> 'request-context-test-token'});
   assert.equal((await a.invoke()).status,200);assert.equal(a.generations,1);
+});
+
+test('empty Gateway balance gives an actionable error before generation or CRM writes',async()=>{
+  const a=setup({creditBalance:'0'});const r=await a.invoke();
+  assert.equal(r.status,402);assert.match(r.result.error,/no available credits/);assert.equal(a.generations,0);assert.equal(a.writes.length,0);
 });
