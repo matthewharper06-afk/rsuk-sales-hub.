@@ -1,3 +1,4 @@
+import { enrichWithHunter } from '../lib/hunter.mjs';
 import { randomUUID } from 'node:crypto';
 import { continueConversation, isActivityId, dialogueInstructions } from '../lib/agent-conversations.mjs';
 import { getVercelOidcToken } from '@vercel/oidc';
@@ -25,7 +26,7 @@ export function createHandler({fetchImpl=fetch, generate=generateText, env=proce
           return res.status(200).json({configured:true,gatewayStatus:response.status,creditBalanceKnown:response.ok&&data.balance!=null&&Number.isFinite(Number(data.balance)),creditsAvailable:response.ok&&data.balance!=null&&Number.isFinite(Number(data.balance))?Number(data.balance)>0:null});
         }catch{return res.status(200).json({configured:true,gatewayStatus:'unreachable'});}
       }
-      return res.status(200).json({configured:true});
+      return res.status(200).json({configured:true,hunterConfigured:Boolean(env.HUNTER_API_KEY)});
     }
     if(req.method!=='POST') {res.setHeader('Allow','GET, POST');return res.status(405).json({error:'Use GET or POST.'});}
     const token = /^Bearer ([^\s]+)$/.exec(req.headers.authorization||'')?.[1];
@@ -114,7 +115,9 @@ export function createHandler({fetchImpl=fetch, generate=generateText, env=proce
         if(!hasSearch(result))throw Object.assign(new Error('The contact-verification search did not return usable evidence. Please try fewer accounts.'),{status:502});
         const checked=qualifyResearch(result.output,[...(discovery.steps||[]),...(result.steps||[])],{today,count:input.count,excludedNames:context.existingCompanyNames});
         leads=checked.leads;researchStats={removed:checked.removed,withheld:checked.withheld,requested:input.count,returned:leads.length};
-        text=formatResearch(checked,{today,count:input.count});
+        const hunter=await enrichWithHunter(leads,{apiKey:env.HUNTER_API_KEY,fetchImpl,blockedEmails:contacts.map(p=>p.email).filter(Boolean)});
+        leads=hunter.leads;checked.leads=leads;researchStats.hunter={status:hunter.status,attempted:hunter.attempted,found:hunter.found||0,failures:hunter.failures||0};
+        text=formatResearch(checked,{today,count:input.count})+'\n\nHunter: '+hunter.status+'; '+hunter.attempted+' company domains checked (maximum 3 per new report).';
       }else{
         if(!result.text?.trim())throw Object.assign(new Error('The assistant returned no report. Please retry.'),{status:502});
         text=result.text.slice(0,45000);
