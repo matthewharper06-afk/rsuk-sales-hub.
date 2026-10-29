@@ -81,7 +81,7 @@ export function createHandler({fetchImpl=fetch, generate=generateText, env=proce
       const [companies,contacts,activities]=await Promise.all([
         read(`/rest/v1/companies?select=*&order=created_at.desc&limit=${limit}`),
         read(`/rest/v1/contacts?select=*&order=created_at.desc&limit=${limit}`),
-        read(`/rest/v1/activities?select=*&action=not.like.sales_agent*&order=created_at.desc&limit=${limit}`),
+        read(`/rest/v1/activities?select=*&action=not.like.sales_agent*&action=not.eq.sales_outlook_connection&order=created_at.desc&limit=${limit}`),
       ]);
       const snapshot={companies,contacts,activities,truncated:[companies,contacts,activities].some(rows=>rows.length===limit)};
       const today=new Date().toLocaleDateString('en-CA',{timeZone:'Europe/London'});
@@ -125,7 +125,7 @@ export function createHandler({fetchImpl=fetch, generate=generateText, env=proce
       const reportId=randomUUID(),conversationId=conversation?.conversationId||reportId;
       const messages=[...(conversation?.messages||[]),{role:'assistant',content:text}];
       const save=await fetchImpl(supabaseUrl+'/rest/v1/activities',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({id:reportId,actor_id:user.id,action:'sales_agent_run',details:JSON.stringify({kind:input.kind,text,messages,leads,researchStats,settings:input,conversation_id:conversationId,parent_id:conversation?.parentId||null,generated_at:new Date().toISOString()})}),signal:AbortSignal.timeout(12000)});
-      return res.status(200).json({text,saved:save.ok,truncated:snapshot.truncated,reportId:save.ok?reportId:null,conversationId,messages,leads,researchStats,kind:input.kind});
+      return res.status(200).json({text,saved:save.ok,truncated:snapshot.truncated,reportId:save.ok?reportId:null,conversationId,messages,leads,researchStats,kind:input.kind,settings:conversation?.settings||input});
     }catch(error){
       // Log only safe categories/statuses, never raw errors, request bodies or tokens.
       const code=Number(error.statusCode||error.cause?.statusCode)||null;

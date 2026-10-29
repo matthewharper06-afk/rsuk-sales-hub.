@@ -26,6 +26,12 @@
   "functions": {
     "api/sales-agent.mjs": {
       "maxDuration": 180
+    },
+    "api/outlook.mjs": {
+      "maxDuration": 30
+    },
+    "api/outlook-callback.mjs": {
+      "maxDuration": 30
     }
   }
 }
